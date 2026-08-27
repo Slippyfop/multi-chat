@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Unified Multi-Chat</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0f0f0f;
+      color: #fff;
+      font-family: system-ui, sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #controls {
+      background: #1a1a1a;
+      padding: 10px 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      border-bottom: 1px solid #333;
+      flex-shrink: 0;
+    }
+
+    #controls input {
+      background: #2a2a2a;
+      border: 1px solid #444;
+      color: #fff;
+      padding: 6px 10px;
+      border-radius: 4px;
+      width: 260px;
+    }
+
+    #controls button {
+      background: #3ea6ff;
+      color: #000;
+      border: none;
+      padding: 6px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    #controls button:hover { background: #65b8ff; }
+    #controls button.secondary { background: #444; color: #fff; }
+    #controls button.secondary:hover { background: #555; }
+
+    #chat-container {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    .chat-wrapper {
+      flex: 1 1 0;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid #333;
+      position: relative;
+      background: #0f0f0f;
+    }
+
+    .chat-wrapper:last-child { border-right: none; }
+
+    .chat-header {
+      background: #222;
+      padding: 5px 8px;
+      font-size: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+      gap: 6px;
+    }
+
+    .chat-header .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .chat-header button {
+      background: transparent;
+      border: none;
+      color: #aaa;
+      cursor: pointer;
+      font-size: 13px;
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+
+    .chat-header button:hover { color: #fff; background: #444; }
+    .chat-header button.remove:hover { color: #ff5555; }
+
+    iframe {
+      flex: 1;
+      width: 100%;
+      border: none;
+      background: #0f0f0f;
+    }
+
+    .empty-msg {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #666;
+      font-size: 14px;
+    }
+
+    .twitch-fallback {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      background: #0f0f0f;
+      color: #aaa;
+      font-size: 13px;
+      text-align: center;
+      padding: 20px;
+    }
+
+    .twitch-fallback button {
+      background: #9146ff;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="controls">
+    <input id="urlInput" placeholder="YouTube ID/URL  or  Twitch channel name/URL" />
+    <button onclick="addChat()">Add Chat</button>
+    <button class="secondary" onclick="clearAll()">Clear All</button>
+    <span style="margin-left:auto; font-size:13px; color:#888;" id="countLabel">0 chats</span>
+  </div>
+
+  <div id="chat-container"></div>
+
+  <script>
+    let chats = [];
+
+    function extractInfo(input) {
+      input = input.trim();
+      if (!input) return null;
+
+      // YouTube
+      let ytMatch = input.match(/(?:v=|youtu\.be\/|\/live\/|\/embed\/|\/shorts\/)([a-zA-Z0-9_-]{11})/);
+      if (ytMatch) return { type: 'youtube', id: ytMatch[1], label: 'YT · ' + ytMatch[1] };
+      if (/^[a-zA-Z0-9_-]{11}$/.test(input)) return { type: 'youtube', id: input, label: 'YT · ' + input };
+
+      // Twitch
+      let twMatch = input.match(/(?:twitch\.tv\/|player\.twitch\.tv\/\?channel=)([a-zA-Z0-9_]{3,25})/i);
+      if (twMatch) return { type: 'twitch', id: twMatch[1].toLowerCase(), label: 'TW · ' + twMatch[1] };
+      if (/^[a-zA-Z0-9_]{3,25}$/i.test(input)) return { type: 'twitch', id: input.toLowerCase(), label: 'TW · ' + input };
+
+      alert('Could not recognise a YouTube video ID/URL or Twitch channel');
+      return null;
+    }
+
+    function buildSrc(info) {
+      if (info.type === 'youtube') {
+        return `https://www.youtube.com/live_chat?v=${info.id}&embed_domain=${location.hostname || 'localhost'}&dark_theme=1`;
+      }
+      if (info.type === 'twitch') {
+        return `https://www.twitch.tv/embed/${info.id}/chat?parent=${location.hostname || 'localhost'}&darkpopout`;
+      }
+      return '';
+    }
+
+    function openTwitchPopout(channel) {
+      window.open(`https://www.twitch.tv/popout/${channel}/chat?popout=`, `twitch-${channel}`, 'width=400,height=700');
+    }
+
+    function render() {
+      const container = document.getElementById('chat-container');
+      container.innerHTML = '';
+
+      if (chats.length === 0) {
+        container.innerHTML = '<div class="empty-msg">Add YouTube or Twitch chats above</div>';
+      } else {
+        chats.forEach((chat, index) => {
+          const wrapper = document.createElement('div');
+          wrapper.className = 'chat-wrapper';
+
+          const header = document.createElement('div');
+          header.className = 'chat-header';
+
+          let headerButtons = `<button class="remove" title="Remove" onclick="removeChat(${index})">✕</button>`;
+          if (chat.type === 'twitch') {
+            headerButtons = `
+              <button title="Open real Twitch popout" onclick="openTwitchPopout('${chat.id}')">↗ Popout</button>
+              ${headerButtons}`;
+          }
+
+          header.innerHTML = `
+            <span class="label">${chat.label}</span>
+            ${headerButtons}
+          `;
+
+          wrapper.appendChild(header);
+
+          if (chat.type === 'twitch') {
+            const fallback = document.createElement('div');
+            fallback.className = 'twitch-fallback';
+            fallback.innerHTML = `
+              <div>Twitch often blocks embeds<br>(especially in Firefox)</div>
+              <button onclick="openTwitchPopout('${chat.id}')">Open Twitch Chat Popout</button>
+            `;
+            wrapper.appendChild(fallback);
+
+            const iframe = document.createElement('iframe');
+            iframe.src = buildSrc(chat);
+            iframe.style.display = 'none'; 
+            iframe.onload = () => { /* could try to detect success (CBA) */ };
+            wrapper.appendChild(iframe);
+          } else {
+            const iframe = document.createElement('iframe');
+            iframe.src = buildSrc(chat);
+            iframe.allow = 'autoplay; encrypted-media';
+            wrapper.appendChild(iframe);
+          }
+
+          container.appendChild(wrapper);
+        });
+      }
+
+      document.getElementById('countLabel').textContent = 
+        chats.length + (chats.length === 1 ? ' chat' : ' chats');
+    }
+
+    function addChat() {
+      const input = document.getElementById('urlInput');
+      const info = extractInfo(input.value);
+      if (!info) return;
+
+      if (chats.some(c => c.type === info.type && c.id === info.id)) {
+        alert('That chat is already open');
+        return;
+      }
+
+      chats.push(info);
+      input.value = '';
+      render();
+    }
+
+    function removeChat(index) {
+      chats.splice(index, 1);
+      render();
+    }
+
+    function clearAll() {
+      if (chats.length && confirm('Remove all chats?')) {
+        chats = [];
+        render();
+      }
+    }
+
+    document.getElementById('urlInput').addEventListener('keydown', e => {
+      if (e.key === 'Enter') addChat();
+    });
+
+    render();
+  </script>
+</body>
+</html>
