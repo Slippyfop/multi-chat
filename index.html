@@ -30,7 +30,7 @@
       color: #fff;
       padding: 6px 10px;
       border-radius: 4px;
-      width: 260px;
+      width: 280px;
     }
 
     #controls button {
@@ -76,7 +76,12 @@
       gap: 6px;
     }
 
-    .chat-header .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .chat-header .label {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
 
     .chat-header button {
       background: transparent;
@@ -152,16 +157,63 @@
 
       // YouTube
       let ytMatch = input.match(/(?:v=|youtu\.be\/|\/live\/|\/embed\/|\/shorts\/)([a-zA-Z0-9_-]{11})/);
-      if (ytMatch) return { type: 'youtube', id: ytMatch[1], label: 'YT · ' + ytMatch[1] };
-      if (/^[a-zA-Z0-9_-]{11}$/.test(input)) return { type: 'youtube', id: input, label: 'YT · ' + input };
+      if (ytMatch) {
+        return {
+          type: 'youtube',
+          id: ytMatch[1],
+          title: null,
+          label: 'YT · ' + ytMatch[1] + ' (loading…)'
+        };
+      }
+      if (/^[a-zA-Z0-9_-]{11}$/.test(input)) {
+        return {
+          type: 'youtube',
+          id: input,
+          title: null,
+          label: 'YT · ' + input + ' (loading…)'
+        };
+      }
 
       // Twitch
       let twMatch = input.match(/(?:twitch\.tv\/|player\.twitch\.tv\/\?channel=)([a-zA-Z0-9_]{3,25})/i);
-      if (twMatch) return { type: 'twitch', id: twMatch[1].toLowerCase(), label: 'TW · ' + twMatch[1] };
-      if (/^[a-zA-Z0-9_]{3,25}$/i.test(input)) return { type: 'twitch', id: input.toLowerCase(), label: 'TW · ' + input };
+      if (twMatch) {
+        return {
+          type: 'twitch',
+          id: twMatch[1].toLowerCase(),
+          label: 'TW · ' + twMatch[1]
+        };
+      }
+      if (/^[a-zA-Z0-9_]{3,25}$/i.test(input)) {
+        return {
+          type: 'twitch',
+          id: input.toLowerCase(),
+          label: 'TW · ' + input
+        };
+      }
 
       alert('Could not recognise a YouTube video ID/URL or Twitch channel');
       return null;
+    }
+
+    function truncate(str, max = 42) {
+      if (!str) return '';
+      return str.length > max ? str.slice(0, max - 1) + '…' : str;
+    }
+
+    async function fetchYouTubeTitle(chat) {
+      try {
+        const url = `https://www.youtube.com/oembed?url=${encodeURIComponent('https://www.youtube.com/watch?v=' + chat.id)}&format=json`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('oEmbed failed');
+        const data = await res.json();
+        chat.title = data.title || null;
+        chat.label = chat.title
+          ? `YT · ${truncate(chat.title)}`
+          : `YT · ${chat.id}`;
+      } catch (e) {
+        chat.label = `YT · ${chat.id}`;
+      }
+      render(); 
     }
 
     function buildSrc(info) {
@@ -175,7 +227,11 @@
     }
 
     function openTwitchPopout(channel) {
-      window.open(`https://www.twitch.tv/popout/${channel}/chat?popout=`, `twitch-${channel}`, 'width=400,height=700');
+      window.open(
+        `https://www.twitch.tv/popout/${channel}/chat?popout=`,
+        `twitch-${channel}`,
+        'width=400,height=700'
+      );
     }
 
     function render() {
@@ -199,8 +255,12 @@
               ${headerButtons}`;
           }
 
+          const fullTitle = chat.title
+            ? `${chat.title} (${chat.id})`
+            : chat.id;
+
           header.innerHTML = `
-            <span class="label">${chat.label}</span>
+            <span class="label" title="${fullTitle.replace(/"/g, '&quot;')}">${chat.label}</span>
             ${headerButtons}
           `;
 
@@ -217,8 +277,7 @@
 
             const iframe = document.createElement('iframe');
             iframe.src = buildSrc(chat);
-            iframe.style.display = 'none'; 
-            iframe.onload = () => { /* could try to detect success (CBA) */ };
+            iframe.style.display = 'none';
             wrapper.appendChild(iframe);
           } else {
             const iframe = document.createElement('iframe');
@@ -231,7 +290,7 @@
         });
       }
 
-      document.getElementById('countLabel').textContent = 
+      document.getElementById('countLabel').textContent =
         chats.length + (chats.length === 1 ? ' chat' : ' chats');
     }
 
@@ -248,6 +307,10 @@
       chats.push(info);
       input.value = '';
       render();
+
+      if (info.type === 'youtube') {
+        fetchYouTubeTitle(info);
+      }
     }
 
     function removeChat(index) {
