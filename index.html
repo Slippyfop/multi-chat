@@ -30,7 +30,7 @@
       color: #fff;
       padding: 6px 10px;
       border-radius: 4px;
-      width: 280px;
+      width: 260px;
     }
 
     #controls button {
@@ -47,23 +47,88 @@
     #controls button.secondary { background: #444; color: #fff; }
     #controls button.secondary:hover { background: #555; }
 
+    .layout-btns {
+      display: flex;
+      gap: 4px;
+      margin-left: 8px;
+    }
+
+    .layout-btns button {
+      background: #333;
+      color: #ccc;
+      font-size: 12px;
+      padding: 5px 10px;
+    }
+
+    .layout-btns button.active {
+      background: #3ea6ff;
+      color: #000;
+    }
+
     #chat-container {
       flex: 1;
-      display: flex;
       overflow: hidden;
+      min-height: 0;
+    }
+
+    /* Horizontal */
+    #chat-container.layout-horizontal {
+      display: flex;
+      flex-direction: row;
+    }
+
+    #chat-container.layout-horizontal .chat-wrapper {
+      border-right: 1px solid #333;
+      border-bottom: none;
+    }
+
+    #chat-container.layout-horizontal .chat-wrapper:last-child {
+      border-right: none;
+    }
+
+    /* Vertical */
+    #chat-container.layout-vertical {
+      display: flex;
+      flex-direction: column;
+    }
+
+    #chat-container.layout-vertical .chat-wrapper {
+      border-right: none;
+      border-bottom: 1px solid #333;
+      min-height: 0;
+    }
+
+    #chat-container.layout-vertical .chat-wrapper:last-child {
+      border-bottom: none;
+    }
+
+    /* Grid */
+    #chat-container.layout-grid {
+      display: grid;
+      gap: 0;
+      height: 100%;
+    }
+
+    #chat-container.layout-grid .chat-wrapper {
+      border-right: 1px solid #333;
+      border-bottom: 1px solid #333;
+      min-height: 0;
+      min-width: 0;
     }
 
     .chat-wrapper {
-      flex: 1 1 0;
-      min-width: 0;
       display: flex;
       flex-direction: column;
-      border-right: 1px solid #333;
       position: relative;
       background: #0f0f0f;
+      min-width: 0;
+      min-height: 0;
     }
 
-    .chat-wrapper:last-child { border-right: none; }
+    #chat-container.layout-horizontal .chat-wrapper,
+    #chat-container.layout-vertical .chat-wrapper {
+      flex: 1 1 0;
+    }
 
     .chat-header {
       background: #222;
@@ -101,15 +166,17 @@
       width: 100%;
       border: none;
       background: #0f0f0f;
+      min-height: 0;
     }
 
     .empty-msg {
-      flex: 1;
       display: flex;
       align-items: center;
       justify-content: center;
       color: #666;
       font-size: 14px;
+      height: 100%;
+      grid-column: 1 / -1;
     }
 
     .twitch-fallback {
@@ -124,6 +191,7 @@
       font-size: 13px;
       text-align: center;
       padding: 20px;
+      min-height: 0;
     }
 
     .twitch-fallback button {
@@ -143,13 +211,22 @@
     <input id="urlInput" placeholder="YouTube ID/URL  or  Twitch channel name/URL" />
     <button onclick="addChat()">Add Chat</button>
     <button class="secondary" onclick="clearAll()">Clear All</button>
+
+    <div class="layout-btns">
+      <button id="btn-horizontal" onclick="setLayout('horizontal')">Horizontal</button>
+      <button id="btn-vertical" onclick="setLayout('vertical')">Vertical</button>
+      <button id="btn-grid" onclick="setLayout('grid')">Grid</button>
+      <button id="btn-auto" onclick="setLayout('auto')">Auto</button>
+    </div>
+
     <span style="margin-left:auto; font-size:13px; color:#888;" id="countLabel">0 chats</span>
   </div>
 
-  <div id="chat-container"></div>
+  <div id="chat-container" class="layout-horizontal"></div>
 
   <script>
     let chats = [];
+    let currentLayout = localStorage.getItem('multiChatLayout') || 'auto';
 
     function extractInfo(input) {
       input = input.trim();
@@ -213,7 +290,7 @@
       } catch (e) {
         chat.label = `YT · ${chat.id}`;
       }
-      render(); 
+      render();
     }
 
     function buildSrc(info) {
@@ -232,6 +309,58 @@
         `twitch-${channel}`,
         'width=400,height=700'
       );
+    }
+
+    function getGridColumns(count) {
+      if (count <= 1) return 1;
+      if (count <= 2) return 2;
+      if (count <= 4) return 2;
+      if (count <= 6) return 3;
+      return 4;
+    }
+
+    function applyLayoutClass() {
+      const container = document.getElementById('chat-container');
+      let effective = currentLayout;
+
+      if (currentLayout === 'auto') {
+        const width = window.innerWidth;
+        const count = chats.length;
+
+        if (count === 0) {
+          effective = 'horizontal';
+        } else if (width < 800) {
+          effective = 'vertical';
+        } else if (count >= 4 && width >= 1100) {
+          effective = 'grid';
+        } else if (count >= 3 && width < 1100) {
+          effective = 'vertical';
+        } else {
+          effective = 'horizontal';
+        }
+      }
+
+      container.classList.remove('layout-horizontal', 'layout-vertical', 'layout-grid');
+      container.classList.add('layout-' + effective);
+
+      if (effective === 'grid') {
+        const cols = getGridColumns(chats.length);
+        container.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+        container.style.gridTemplateRows = `repeat(${Math.ceil(chats.length / cols)}, 1fr)`;
+      } else {
+        container.style.gridTemplateColumns = '';
+        container.style.gridTemplateRows = '';
+      }
+      ['horizontal', 'vertical', 'grid', 'auto'].forEach(mode => {
+        const btn = document.getElementById('btn-' + mode);
+        if (btn) btn.classList.toggle('active', currentLayout === mode);
+      });
+    }
+
+    function setLayout(mode) {
+      currentLayout = mode;
+      localStorage.setItem('multiChatLayout', mode);
+      applyLayoutClass();
     }
 
     function render() {
@@ -292,6 +421,8 @@
 
       document.getElementById('countLabel').textContent =
         chats.length + (chats.length === 1 ? ' chat' : ' chats');
+
+      applyLayoutClass();
     }
 
     function addChat() {
@@ -329,6 +460,11 @@
       if (e.key === 'Enter') addChat();
     });
 
+    window.addEventListener('resize', () => {
+      if (currentLayout === 'auto') applyLayoutClass();
+    });
+
+    setLayout(currentLayout);
     render();
   </script>
 </body>
