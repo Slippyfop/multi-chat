@@ -319,22 +319,28 @@
       return 4;
     }
 
+    // ---------- Hash-based URL sharing (GitHub Pages friendly) ----------
     function updateURL() {
-      const params = new URLSearchParams();
-      if (chats.length > 0) {
-        const list = chats.map(c => {
-          const prefix = c.type === 'youtube' ? 'yt' : 'tw';
-          return `${prefix}:${c.id}`;
-        }).join(',');
-        params.set('chats', list);
+      if (chats.length === 0) {
+        // Clear the hash
+        history.replaceState(null, '', location.pathname + location.search);
+        return;
       }
-      const newUrl = location.pathname + (params.toString() ? '?' + params.toString() : '') + location.hash;
+
+      const list = chats.map(c => {
+        const prefix = c.type === 'youtube' ? 'yt' : 'tw';
+        return `${prefix}:${c.id}`;
+      }).join(',');
+
+      const newUrl = location.pathname + location.search + '#chats=' + list;
       history.replaceState(null, '', newUrl);
     }
 
     function loadFromURL() {
-      const params = new URLSearchParams(location.search);
-      const chatsParam = params.get('chats');
+      const hash = location.hash;
+      if (!hash.startsWith('#chats=')) return;
+
+      const chatsParam = hash.slice(7); // remove "#chats="
       if (!chatsParam) return;
 
       chatsParam.split(',').forEach(item => {
@@ -524,7 +530,8 @@
       if (currentLayout === 'auto') applyLayoutClass();
     });
 
-    loadFromURL();          
+    // Initialise
+    loadFromURL();
     setLayout(currentLayout);
     render();
   </script>
