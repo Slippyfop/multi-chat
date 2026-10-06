@@ -319,6 +319,64 @@
       return 4;
     }
 
+    function updateURL() {
+      const params = new URLSearchParams();
+      if (chats.length > 0) {
+        const list = chats.map(c => {
+          const prefix = c.type === 'youtube' ? 'yt' : 'tw';
+          return `${prefix}:${c.id}`;
+        }).join(',');
+        params.set('chats', list);
+      }
+      const newUrl = location.pathname + (params.toString() ? '?' + params.toString() : '') + location.hash;
+      history.replaceState(null, '', newUrl);
+    }
+
+    function loadFromURL() {
+      const params = new URLSearchParams(location.search);
+      const chatsParam = params.get('chats');
+      if (!chatsParam) return;
+
+      chatsParam.split(',').forEach(item => {
+        item = item.trim();
+        if (!item) return;
+
+        const colon = item.indexOf(':');
+        if (colon === -1) return;
+
+        const typeShort = item.slice(0, colon).toLowerCase();
+        const id = item.slice(colon + 1).trim();
+        if (!id) return;
+
+        let info = null;
+        if (typeShort === 'yt' || typeShort === 'youtube') {
+          if (/^[a-zA-Z0-9_-]{11}$/.test(id)) {
+            info = {
+              type: 'youtube',
+              id: id,
+              title: null,
+              label: 'YT · ' + id + ' (loading…)'
+            };
+          }
+        } else if (typeShort === 'tw' || typeShort === 'twitch') {
+          if (/^[a-zA-Z0-9_]{3,25}$/i.test(id)) {
+            info = {
+              type: 'twitch',
+              id: id.toLowerCase(),
+              label: 'TW · ' + id
+            };
+          }
+        }
+
+        if (info && !chats.some(c => c.type === info.type && c.id === info.id)) {
+          chats.push(info);
+          if (info.type === 'youtube') {
+            fetchYouTubeTitle(info);
+          }
+        }
+      });
+    }
+
     function applyLayoutClass() {
       const container = document.getElementById('chat-container');
       let effective = currentLayout;
@@ -346,11 +404,12 @@
       if (effective === 'grid') {
         const cols = getGridColumns(chats.length);
         container.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-        container.style.gridTemplateRows = `repeat(${Math.ceil(chats.length / cols)}, 1fr)`;
+        container.style.gridTemplateRows = `repeat(${Math.ceil(chats.length / cols) || 1}, 1fr)`;
       } else {
         container.style.gridTemplateColumns = '';
         container.style.gridTemplateRows = '';
       }
+
       ['horizontal', 'vertical', 'grid', 'auto'].forEach(mode => {
         const btn = document.getElementById('btn-' + mode);
         if (btn) btn.classList.toggle('active', currentLayout === mode);
@@ -423,6 +482,7 @@
         chats.length + (chats.length === 1 ? ' chat' : ' chats');
 
       applyLayoutClass();
+      updateURL();
     }
 
     function addChat() {
@@ -464,6 +524,7 @@
       if (currentLayout === 'auto') applyLayoutClass();
     });
 
+    loadFromURL();          
     setLayout(currentLayout);
     render();
   </script>
